@@ -42,7 +42,7 @@ tank = WaterTank(TANK_RADIUS, TANK_HEIGHT)
 
 # Data
 data_entry = args.rawread
-meter_read = float(data_entry.split(' ')[2])
+meter_read = float(data_entry.split(' ')[-2])
 water_height = (TANK_HEIGHT + METER_HEIGHT) - meter_read 
 gallons_remaining = tank.gallons_at_height(water_height)
 if args.dryrun:
