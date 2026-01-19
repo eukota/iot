@@ -2,28 +2,83 @@
 import argparse
 import datetime
 import logging
-from sensor import Sensor
+import os
 
-parser = argparse.ArgumentParser(description='Logs the distance in inches from the distance sensor to input file.')
-parser.add_argument('--output', help='Path to file to write to. Defaults to a local file named out.txt', default='out.txt')
-parser.add_argument('--append', type=bool, help='True = append to file, False = overwrite file, Defaults to True', default=True)
-parser.add_argument('--verbose', type=bool, help='verbose output will also go to log file', default=False)
-args = parser.parse_args()
+from config_loader import ConfigLoader
+from distance_sensor import DistanceSensor
 
-if args.verbose:
-        logging.getLogger().setLevel('DEBUG')
-        logging.debug("Distance Read...")
-        logging.debug("Output: %s" % args.output )
-        logging.debug("Append: %r" % args.append )
-        logging.debug("Verbose: %r" % args.verbose )
 
-with Sensor(pin_trigger = 7, pin_echo = 11) as sensor:
-        distance_in_inches = sensor.distance_in_inches()
-        res = ("%s: %5.2f in" % (datetime.datetime.now(), distance_in_inches))
-        if not args.append:
-                f = open(args.output, "w+")
-        else:
-                f = open(args.output, "a")
-        f.write(res)
+class LogDistance:
+    def __init__(self, path, append=True):
+        self.path = path
+        self.append = append
+
+    def append_reading(self, distance_in_inches, timestamp=None):
+        if timestamp is None:
+            timestamp = datetime.datetime.now()
+        entry = ("%s: %5.2f in" % (timestamp, distance_in_inches))
+        mode = "a" if self.append else "w+"
+        f = open(self.path, mode)
+        f.write(entry)
         f.write("\n")
         f.close()
+        return entry
+
+    def read_last_line(self):
+        if not os.path.exists(self.path):
+            return None
+        try:
+            f = open(self.path, 'rb')
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
+                f.close()
+                return ""
+            read_size = 4096 if size > 4096 else size
+            f.seek(-read_size, os.SEEK_END)
+            chunk = f.read(read_size)
+            f.close()
+            lines = chunk.splitlines()
+            if not lines:
+                return ""
+            return lines[-1].decode('utf-8', 'replace').strip()
+        except Exception as exc:
+            logging.error("Error reading last log line: %s", exc)
+            return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Logs the distance in inches from the distance sensor to input file.')
+    parser.add_argument('--output', help='Path to file to write to. Defaults to config.json log_file', default=None)
+    parser.add_argument('--config', help='Path to config.json', default=None)
+    parser.add_argument('--append', type=bool, help='True = append to file, False = overwrite file, Defaults to True', default=True)
+    parser.add_argument('--verbose', type=bool, help='verbose output will also go to log file', default=False)
+    args = parser.parse_args()
+
+    config_path = args.config or ConfigLoader.default_config_path()
+    loader = ConfigLoader(config_path=config_path)
+    config = loader.load_config()
+
+    paths_config = config.get('paths') or {}
+    sensor_config = config.get('sensor') or {}
+
+    output_path = args.output or paths_config.get('log_file') or 'out.txt'
+    pin_trigger = int(sensor_config.get('pin_trigger', 7))
+    pin_echo = int(sensor_config.get('pin_echo', 11))
+    sleep_time = float(sensor_config.get('sleep_time', 5))
+
+    if args.verbose:
+        logging.getLogger().setLevel('DEBUG')
+        logging.debug("Distance Read...")
+        logging.debug("Output: %s" % output_path)
+        logging.debug("Append: %r" % args.append)
+        logging.debug("Verbose: %r" % args.verbose)
+
+    with DistanceSensor(pin_trigger=pin_trigger, pin_echo=pin_echo, sleep_time=sleep_time) as sensor:
+        distance = sensor.distance_in_inches()
+        logger = LogDistance(output_path, append=args.append)
+        logger.append_reading(distance)
+
+
+if __name__ == "__main__":
+    main()
