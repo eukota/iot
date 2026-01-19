@@ -13,7 +13,9 @@ import os
 from config_loader import ConfigLoader
 from log_distance import LogDistance
 from slack_client import SlackClient
-from tank_message import build_tank_message
+from graph_utils import sparkline
+from tank_message import build_tank_message, gallons_from_distance, parse_distance_in_inches
+from watertank import WaterTank
 
 # Configuration paths
 DEFAULT_CONFIG_PATH = ConfigLoader.default_config_path()
@@ -111,6 +113,36 @@ def handle_tank_level_command(slack_client, log_reader, tank_config, webhook_end
         logging.error("Failed to send tank level to Slack")
 
 
+def handle_tank_graph_command(slack_client, log_reader, tank_config, webhook_endpoint, count=10):
+    lines = log_reader.read_last_lines(count)
+    if not lines:
+        logging.error("Tank log is empty; not sending graph")
+        return
+    values = []
+    tank_height = float(tank_config.get('height_in', 75.0))
+    tank_radius = float(tank_config.get('radius_in', 54.23))
+    meter_height = float(tank_config.get('meter_height_in', 4.0))
+    tank = WaterTank(tank_radius, tank_height)
+    for line in lines:
+        try:
+            meter_read = parse_distance_in_inches(line)
+            values.append(gallons_from_distance(meter_read, tank, tank_height, meter_height))
+        except Exception:
+            continue
+    if not values:
+        logging.error("No valid readings for graph")
+        return
+    graph = sparkline(values)
+    latest_line = lines[-1]
+    message, _, _, _ = build_tank_message(latest_line, tank_config)
+    graph_message = "Last {} readings (gal): {}\n{}".format(len(values), graph, message)
+    ok = slack_client.post_message(graph_message, endpoint=webhook_endpoint)
+    if ok:
+        logging.info("Sent tank graph to Slack")
+    else:
+        logging.error("Failed to send tank graph to Slack")
+
+
 def is_command(text, command_name):
     """Strict command check: must start with 'tank:level' (case-insensitive)"""
     if not text:
@@ -204,6 +236,10 @@ class SlackCommandChecker:
             if is_command(text, "tank:level"):
                 logging.info("Command tank:level from %s ts=%s", user, ts)
                 handle_tank_level_command(slack_client, log_reader, tank_config, webhook_endpoint)
+                processed_any = True
+            elif is_command(text, "tank:graph"):
+                logging.info("Command tank:graph from %s ts=%s", user, ts)
+                handle_tank_graph_command(slack_client, log_reader, tank_config, webhook_endpoint)
                 processed_any = True
 
             if ts_num > new_last_ts:

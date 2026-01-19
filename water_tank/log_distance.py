@@ -46,6 +46,37 @@ class LogDistance:
             logging.error("Error reading last log line: %s", exc)
             return None
 
+    def read_last_lines(self, count):
+        if count <= 0:
+            return []
+        if not os.path.exists(self.path):
+            return []
+        try:
+            f = open(self.path, 'rb')
+            f.seek(0, os.SEEK_END)
+            file_size = f.tell()
+            if file_size == 0:
+                f.close()
+                return []
+
+            buffer_size = 8192
+            data = b""
+            offset = 0
+            while len(data.splitlines()) <= count and file_size > offset:
+                offset = min(file_size, offset + buffer_size)
+                f.seek(-offset, os.SEEK_END)
+                data = f.read(offset)
+                if offset == file_size:
+                    break
+
+            f.close()
+            lines = data.splitlines()
+            tail = lines[-count:] if len(lines) >= count else lines
+            return [line.decode('utf-8', 'replace').strip() for line in tail]
+        except Exception as exc:
+            logging.error("Error reading last log lines: %s", exc)
+            return []
+
 
 def main():
     parser = argparse.ArgumentParser(description='Logs the distance in inches from the distance sensor to input file.')
