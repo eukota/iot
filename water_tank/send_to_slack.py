@@ -26,20 +26,6 @@ def main():
     config = loader.load_config()
     secrets = loader.load_secrets()
 
-<<<<<<< Updated upstream
-# Data
-data_entry = args.rawread
-meter_read = float(data_entry.split(' ')[-2])
-water_height = (TANK_HEIGHT + METER_HEIGHT) - meter_read 
-gallons_remaining = tank.gallons_at_height(water_height)
-if args.dryrun:
-    logging.info(data_entry)
-    logging.info(meter_read)
-    logging.info(water_height)
-    logging.info(gallons_remaining)
-message = "Distance: {}\n    Estimated: {:,.0f} gallons".format(data_entry, gallons_remaining)
-send_message_to_slack(args.endpoint, message)
-=======
     slack_secrets = secrets.get('slack') or {}
     endpoint = args.endpoint or slack_secrets.get('webhook_endpoint')
     if not endpoint:
@@ -59,4 +45,3 @@ send_message_to_slack(args.endpoint, message)
 
 if __name__ == "__main__":
     main()
->>>>>>> Stashed changes

@@ -8,7 +8,10 @@ def build_tank_message(raw_entry, tank_config):
     meter_height = float(tank_config.get('meter_height_in', 4.0))
     tank = WaterTank(tank_radius, tank_height)
 
-    meter_read = float(raw_entry.split(' ')[2])
+    tokens = raw_entry.strip().split()
+    if len(tokens) < 2:
+        raise ValueError("Unexpected log line format: %r" % raw_entry)
+    meter_read = float(tokens[-2])
     water_height = (tank_height + meter_height) - meter_read
     gallons_remaining = tank.gallons_at_height(water_height)
     message = "Distance: {}\n    Estimated: {:,.0f} gallons".format(raw_entry, gallons_remaining)
